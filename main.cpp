@@ -1,11 +1,6 @@
-#include <opencv2/imgproc.hpp>
-#include <opencv2/core.hpp>
-#include <opencv2/imgcodecs.hpp>
-#include <opencv2/highgui.hpp>
+#incluce <opencv2/opencv.hpp>
 
 #include "LibCamera.h"
-
-using namespace cv;
 
 int main() {
     time_t start_time = time(0);
@@ -48,7 +43,7 @@ int main() {
             flag = cam.readFrame(&frameData);
             if (!flag)
                 continue;
-            Mat im(height, width, CV_8UC3, frameData.imageData, stride);
+            cv::Mat im(height, width, CV_8UC3, frameData.imageData, stride);
 
             imshow("libcamera-demo", im);
             key = waitKey(1);
@@ -81,7 +76,7 @@ int main() {
             }
             cam.returnFrameBuffer(frameData);
         }
-        destroyAllWindows();
+        cv::destroyAllWindows();
         cam.stopCamera();
     }
     cam.closeCamera();
