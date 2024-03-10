@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.6)
 set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}" ${CMAKE_MODULE_PATH})
-project(libcamera-demo)
+project(libcamera-interface)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(CAMERA REQUIRED libcamera)
 
@@ -20,6 +20,6 @@ endif(OpenCV_FOUND)
 
 include_directories(. "${CAMERA_INCLUDE_DIRS}")
 set(LIBCAMERA_LIBRARIES "${LIBCAMERA_LIBRARY}" "${LIBCAMERA_BASE_LIBRARY}")
-add_executable(libcamera-demo main.cpp LibCamera.cpp)
+add_executable(${PROJECT_NAME} main.cpp LibCamera.cpp)
 
-target_link_libraries(libcamera-demo "${LIBCAMERA_LIBRARIES}" ${OpenCV_LIBS})
+target_link_libraries(${PROJECT_NAME} "${LIBCAMERA_LIBRARIES}" ${OpenCV_LIBS})
