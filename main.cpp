@@ -12,13 +12,11 @@ int main() {
     uint32_t height = 1080;
     uint32_t stride;
     char key;
-    int window_width = 1920;
-    int window_height = 1080;
 
     if (width > window_width)
     {
         cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
-        cv::resizeWindow("libcamera-demo", window_width, window_height);
+        cv::resizeWindow("libcamera-demo", width, height);
     } 
 
     int ret = cam.initCamera();
