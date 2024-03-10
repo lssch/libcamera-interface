@@ -40,7 +40,7 @@ typedef struct {
   uint8_t *imageData;
   uint32_t size;
   uint64_t request;
-} LibcameraOutData;
+} OutData;
 
 class Camera {
 public:
@@ -54,20 +54,35 @@ public:
   void stop();
   void close();
 
-  bool readFrame(LibcameraOutData *frameData);
-  void returnFrameBuffer(LibcameraOutData frameData);
+  bool readFrame(OutData &frame);
+  void returnFrameBuffer(OutData frame);
 
-  void set(libcamera::ControlList controls);
 
-  libcamera::Stream *VideoStream(uint32_t *w, uint32_t *h, uint32_t *stride) const;
+
+  void setFocusTrigger();
+  void setFocusContinuous();
+  void setFocusManual(float lens_position);
+  void setFPS(unsigned int fps);
+  void setBrightness(float brightness);
+  void setContrast(float contrast);
+  void setExposureTime(unsigned int exposure_time);
+
   std::string getId();
 
-private:
-    std::unique_ptr<libcamera::CameraManager> camera_manager_;
+  unsigned int getWidth();
+  unsigned int getHeight();
+  unsigned int getStride();
+
+private:    
+std::unique_ptr<libcamera::CameraManager> camera_manager_;
     std::shared_ptr<libcamera::Camera> camera_;
     std::string id_;
     bool acquired_{false};
     bool started_{false};
+
+    unsigned int width_;
+    unsigned int height_;
+    unsigned int stride_;
 
     void init(int id);
     void configure(std::array<int, 2> resolution, libcamera::PixelFormat format, int buffercount);
@@ -77,10 +92,6 @@ private:
   int queueRequest(libcamera::Request *request);
   void requestComplete(libcamera::Request *request);
   void processRequest(libcamera::Request *request);
-
-  void streamDimensions(libcamera::Stream const *stream, uint32_t *width, uint32_t *heigth, uint32_t *stride) const;
-
-
 
   std::unique_ptr<libcamera::CameraConfiguration> config_;
   std::unique_ptr<libcamera::FrameBufferAllocator> allocator_;
@@ -95,7 +106,6 @@ private:
   std::mutex free_requests_mutex_;
 
   libcamera::Stream *viewfinder_stream_ = nullptr;
-
 };
 
 

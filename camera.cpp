@@ -106,10 +106,20 @@ int Camera::start() {
   }
 
   camera_->requestCompleted.connect(this, &Camera::requestComplete);
-
   allocator_ = std::make_unique<libcamera::FrameBufferAllocator>(camera_);
 
-  return startCapture();
+  state = startCapture();
+  if (state < 0) {
+      std::cout << "Failed to configure camera" << std::endl;
+      return state;
+  }
+
+  libcamera::StreamConfiguration const &cfg = viewfinder_stream_->configuration();
+  width_ = cfg.size.width;
+  height_ = cfg.size.height;
+  stride_ = cfg.stride;
+
+  return 0;
 }
 
 int Camera::startCapture() {
@@ -176,21 +186,6 @@ int Camera::startCapture() {
     return 0;
 }
 
-void Camera::streamDimensions(libcamera::Stream const *stream, uint32_t *width, uint32_t *height, uint32_t *stride) const {
-    libcamera::StreamConfiguration const &cfg = stream->configuration();
-    if (width)
-        *width = cfg.size.width;
-    if (height)
-        *height = cfg.size.height;
-    if (stride)
-        *stride = cfg.stride;
-}
-
-libcamera::Stream *Camera::VideoStream(uint32_t *width, uint32_t *height, uint32_t *stride) const {
-    streamDimensions(viewfinder_stream_, width, height, stride);
-    return viewfinder_stream_;
-}
-
 int Camera::queueRequest(libcamera::Request *request) {
     std::lock_guard<std::mutex> stop_lock(camera_stop_mutex_);
     if (!started_) {
@@ -213,14 +208,14 @@ void Camera::processRequest(libcamera::Request *request) {
     requestQueue_.push(request);
 }
 
-void Camera::returnFrameBuffer(LibcameraOutData frameData) {
-    uint64_t request = frameData.request;
+void Camera::returnFrameBuffer(OutData frame) {
+    uint64_t request = frame.request;
     auto * req = (libcamera::Request *)request;
     req->reuse(libcamera::Request::ReuseBuffers);
     queueRequest(req);
 }
 
-bool Camera::readFrame(LibcameraOutData *frameData){
+bool Camera::readFrame(OutData &frame){
     std::lock_guard<std::mutex> lock(free_requests_mutex_);
 
     if (!requestQueue_.empty()){
@@ -236,21 +231,21 @@ bool Camera::readFrame(LibcameraOutData *frameData){
                 void *data = mappedBuffers_[plane.fd.get()].first;
                 int length = std::min(meta.bytesused, plane.length);
 
-                frameData->size = length;
-                frameData->imageData = (uint8_t *)data;
+                frame.size = length;
+                frame.imageData = (uint8_t *)data;
             }
         }
         this->requestQueue_.pop();
-        frameData->request = (uint64_t)request;
+        frame.request = (uint64_t)request;
         return true;
     } else {
         libcamera::Request *request = nullptr;
-        frameData->request = (uint64_t)request;
+        frame.request = (uint64_t)request;
         return false;
     }
 }
 
-void Camera::set(libcamera::ControlList controls){
+void Camera::setControl(libcamera::ControlList controls){
     std::lock_guard<std::mutex> lock(control_mutex_);
     this->controls_ = std::move(controls);
 }
@@ -300,4 +295,60 @@ void Camera::close() {
 
 std::string Camera::getId(){
     return id_;
+}
+
+unsigned int Camera::getWidth() {
+    return width_;
+}
+
+unsigned int Camera::getHeight() {
+    return height_;
+}
+
+unsigned int Camera::getStride() {
+    return stride_;
+}
+
+
+void Camera::setFocusTrigger() {
+    std::lock_guard<std::mutex> lock(control_mutex_);
+    controls_.set(libcamera::controls::AfMode, libcamera::controls::AfModeAuto);
+    controls_.set(libcamera::controls::AfTrigger, 0);
+}
+
+void Camera::setFocusContinuous() {
+    std::lock_guard<std::mutex> lock(control_mutex_);
+    controls_.set(libcamera::controls::AfMode, libcamera::controls::AfModeContinuous);
+}
+
+void Camera::setFocusManual(float lens_position) {
+    std::lock_guard<std::mutex> lock(control_mutex_);
+    controls_.set(libcamera::controls::AfMode, libcamera::controls::AfModeManual);
+    controls_.set(libcamera::controls::LensPosition, lens_position);
+}
+
+void Camera::setFPS(unsigned int fps) {
+    std::lock_guard<std::mutex> lock(control_mutex_);
+    controls_.set(libcamera::controls::FrameDurationLimits, libcamera::Span<const int64_t, 2>({1000000/fps, 1000000/fps}));
+}
+
+void Camera::setBrightness(float brightness) {
+    if (brightness > 1 or brightness < -1) {
+        std::cerr << "Brightness must be in range [-1, 1]." << std::endl;
+    }
+    std::lock_guard<std::mutex> lock(control_mutex_);
+    controls_.set(libcamera::controls::Brightness, brightness);
+}
+
+void Camera::setContrast(float contrast) {
+    if (contrast < 1) {
+        std::cerr << "Contrast must be greather or equal to 1." << std::endl;
+    }
+    std::lock_guard<std::mutex> lock(control_mutex_);
+    controls_.set(libcamera::controls::Contrast, contrast);
+}
+
+void Camera::setExposureTime(unsigned int exposure_time) {
+    std::lock_guard<std::mutex> lock(control_mutex_);
+    controls_.set(libcamera::controls::ExposureTime, exposure_time);
 }

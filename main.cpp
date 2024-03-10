@@ -3,59 +3,41 @@
 #include "camera.hpp"
 
 int main() {
-    float lens_position = 100;
-    float focus_step = 50;
-    uint32_t width = 1920;
-    uint32_t height = 1080;
-    uint32_t stride;
-    char key;
-    
+    const std::string winname = "preview";
+    float lens_position = 0;
+    float focus_step = 0.5;
+
     Camera camera{0, "../camera.json"};
 
-    cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
-    cv::resizeWindow("libcamera-demo", width, height);
+    cv::namedWindow(winname, cv::WINDOW_NORMAL);
 
-    libcamera::ControlList controls_;
-    int64_t frame_time = 1000000 / 10;
-    // Set frame rate
-	controls_.set(libcamera::controls::FrameDurationLimits, libcamera::Span<const int64_t, 2>({ frame_time, frame_time }));
-    // Adjust the brightness of the output images, in the range -1.0 to 1.0
-    controls_.set(libcamera::controls::Brightness, 0.5);
-    // Adjust the contrast of the output image, where 1.0 = normal contrast
-    controls_.set(libcamera::controls::Contrast, 1.5);
-    // Set the exposure time
-    controls_.set(libcamera::controls::ExposureTime, 20000);
-    camera.set(controls_);
-    bool flag;
-    LibcameraOutData frameData;
+    //camera.setFPS(20);
+    //camera.setBrightness(0.0);
+    //camera.setContrast(1.0);
+    //camera.setExposureTime(1000);
+
     camera.start();
-    camera.VideoStream(&width, &height, &stride);
     while (true) {
-        flag = camera.readFrame(&frameData);
-        if (!flag)
-            continue;
-        cv::Mat im(height, width, CV_8UC3, frameData.imageData, stride);
+        OutData frameData;
+        if (not camera.readFrame(frameData)) continue;
 
-        imshow("libcamera-demo", im);
-        key = cv::waitKey(1);
-        if (key == 'q') {
+        cv::Mat frame(camera.getWidth(), camera.getHeight(), CV_8UC3, frameData.imageData, camera.getStride());
+
+        //std::cout << "Lens position: " << std::to_string(camera.getFocus()) << std::endl;
+
+        imshow(winname, frame);
+
+        char key = cv::waitKey(1);
+        if (key == 'q' or key == 27) {
             break;
         } else if (key == 'f') {
-            libcamera::ControlList controls;
-            controls.set(libcamera::controls::AfMode, libcamera::controls::AfModeAuto);
-            controls.set(libcamera::controls::AfTrigger, 0);
-            camera.set(controls);
+            camera.setFocusContinuous();
         } else if (key == 'a' || key == 'A') {
             lens_position += focus_step;
+            camera.setFocusManual(lens_position);
         } else if (key == 'd' || key == 'D') {
             lens_position -= focus_step;
-        }
-
-        if (key == 'a' || key == 'A' || key == 'd' || key == 'D') {
-            libcamera::ControlList controls;
-            controls.set(libcamera::controls::AfMode, libcamera::controls::AfModeManual);
-            controls.set(libcamera::controls::LensPosition, lens_position);
-            camera.set(controls);
+            camera.setFocusManual(lens_position);
         }
 
         camera.returnFrameBuffer(frameData);
