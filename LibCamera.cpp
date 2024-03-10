@@ -1,7 +1,5 @@
 #include "LibCamera.h"
 
-using namespace std::placeholders;
-
 int LibCamera::initCamera() {
     int ret;
     cm = std::make_unique<CameraManager>();

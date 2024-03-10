@@ -20,8 +20,6 @@ endif(OpenCV_FOUND)
 
 include_directories(. "${CAMERA_INCLUDE_DIRS}")
 set(LIBCAMERA_LIBRARIES "${LIBCAMERA_LIBRARY}" "${LIBCAMERA_BASE_LIBRARY}")
-add_executable(${PROJECT_NAME} main.cpp LibCamera.cpp
-		camera.cpp
-		camera.hpp)
+add_executable(${PROJECT_NAME} main.cpp camera.cpp)
 
 target_link_libraries(${PROJECT_NAME} "${LIBCAMERA_LIBRARIES}" ${OpenCV_LIBS})

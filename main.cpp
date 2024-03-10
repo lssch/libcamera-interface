@@ -1,82 +1,70 @@
-#incluce <opencv2/opencv.hpp>
+#include "opencv2/opencv.hpp"
 
-#include "LibCamera.h"
+#include "camera.hpp"
 
 int main() {
-    time_t start_time = time(0);
-    int frame_count = 0;
     float lens_position = 100;
     float focus_step = 50;
-    LibCamera cam;
+    Camera camera;
     uint32_t width = 1920;
     uint32_t height = 1080;
     uint32_t stride;
     char key;
 
-    if (width > window_width)
-    {
-        cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
-        cv::resizeWindow("libcamera-demo", width, height);
-    } 
+    cv::namedWindow("libcamera-demo", cv::WINDOW_NORMAL);
+    cv::resizeWindow("libcamera-demo", width, height);
 
-    int ret = cam.initCamera();
-    cam.configureStill(width, height, formats::RGB888, 1, 0);
-    ControlList controls_;
+    int ret = camera.init();
+    camera.configure(width, height, libcamera::formats::RGB888, 1);
+    libcamera::ControlList controls_;
     int64_t frame_time = 1000000 / 10;
     // Set frame rate
-	controls_.set(controls::FrameDurationLimits, libcamera::Span<const int64_t, 2>({ frame_time, frame_time }));
+	controls_.set(libcamera::controls::FrameDurationLimits, libcamera::Span<const int64_t, 2>({ frame_time, frame_time }));
     // Adjust the brightness of the output images, in the range -1.0 to 1.0
-    controls_.set(controls::Brightness, 0.5);
+    controls_.set(libcamera::controls::Brightness, 0.5);
     // Adjust the contrast of the output image, where 1.0 = normal contrast
-    controls_.set(controls::Contrast, 1.5);
+    controls_.set(libcamera::controls::Contrast, 1.5);
     // Set the exposure time
-    controls_.set(controls::ExposureTime, 20000);
-    cam.set(controls_);
+    controls_.set(libcamera::controls::ExposureTime, 20000);
+    camera.set(controls_);
     if (!ret) {
         bool flag;
         LibcameraOutData frameData;
-        cam.startCamera();
-        cam.VideoStream(&width, &height, &stride);
+        camera.start();
+        camera.VideoStream(&width, &height, &stride);
         while (true) {
-            flag = cam.readFrame(&frameData);
+            flag = camera.readFrame(&frameData);
             if (!flag)
                 continue;
             cv::Mat im(height, width, CV_8UC3, frameData.imageData, stride);
 
             imshow("libcamera-demo", im);
-            key = waitKey(1);
+            key = cv::waitKey(1);
             if (key == 'q') {
                 break;
             } else if (key == 'f') {
-                ControlList controls;
-                controls.set(controls::AfMode, controls::AfModeAuto);
-                controls.set(controls::AfTrigger, 0);
-                cam.set(controls);
+                libcamera::ControlList controls;
+                controls.set(libcamera::controls::AfMode, libcamera::controls::AfModeAuto);
+                controls.set(libcamera::controls::AfTrigger, 0);
+                camera.set(controls);
             } else if (key == 'a' || key == 'A') {
                 lens_position += focus_step;
             } else if (key == 'd' || key == 'D') {
                 lens_position -= focus_step;
             }
 
-            // To use the manual focus function, libcamera-dev needs to be updated to version 0.0.10 and above.
             if (key == 'a' || key == 'A' || key == 'd' || key == 'D') {
-                ControlList controls;
-                controls.set(controls::AfMode, controls::AfModeManual);
-				controls.set(controls::LensPosition, lens_position);
-                cam.set(controls);
+                libcamera::ControlList controls;
+                controls.set(libcamera::controls::AfMode, libcamera::controls::AfModeManual);
+				controls.set(libcamera::controls::LensPosition, lens_position);
+                camera.set(controls);
             }
 
-            frame_count++;
-            if ((time(0) - start_time) >= 1){
-                printf("fps: %d\n", frame_count);
-                frame_count = 0;
-                start_time = time(0);
-            }
-            cam.returnFrameBuffer(frameData);
+            camera.returnFrameBuffer(frameData);
         }
         cv::destroyAllWindows();
-        cam.stopCamera();
+        camera.stop();
     }
-    cam.closeCamera();
+    camera.close();
     return 0;
 }
