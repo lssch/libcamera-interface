@@ -1,0 +1,9 @@
+{
+  "resolution": [1280, 1280],
+  "buffercount": 1,
+  "framerate": 20,
+  "brightness": 0.1,
+  "contrast": 1.1,
+  "exposure_time": 5000,
+  "lens_position": 15
+}

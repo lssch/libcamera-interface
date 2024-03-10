@@ -2,63 +2,98 @@
 // Created by Lars Schwarz on 10.03.2024.
 //
 
+#include <fstream>
 #include "camera.hpp"
 
 
-Camera::Camera() {}
+Camera::Camera(int id, std::string path_to_config) {
+    std::array<int, 2> resolution;
+    int framerate, exposure_time, buffercount;
+    float brightness, contrast, lens_position;
 
-Camera::~Camera() {}
+    try {
+        std::ifstream config_file(path_to_config);
+        nlohmann::json config_data = nlohmann::json::parse(config_file);
 
-int Camera::init() {
-  camera_manager_ = std::make_unique<libcamera::CameraManager>();
-  int state = camera_manager_->start();
-  if (state) {
-    std::cout << "Failed to start camera manager: " << state << std::endl;
-    return state;
-  }
+        resolution = config_data.at("resolution");
+        buffercount = config_data.at("buffercount");
+        framerate = config_data.at("framerate");
+        brightness = config_data.at("brightness");
+        contrast = config_data.at("contrast");
+        exposure_time = config_data.at("exposure_time");
+        lens_position = config_data.at("lens_position");
+    } catch (std::exception &ex) {
+        throw std::runtime_error(std::string("Error while parsing the config data: ") + ex.what());
+    }
 
-  cameraId = camera_manager_->cameras()[0]->id();
-  camera_ = camera_manager_->get(cameraId);
-  if (!camera_) {
-    std::cerr << "Camera " << cameraId << " not found" << std::endl;
-    return 1;
-  }
+    try {
+        init(id);
+    } catch (std::exception &ex) {
+        throw std::runtime_error(std::string("Error while initialising camera: ") + ex.what());
+    }
 
-  if (camera_->acquire()) {
-    std::cerr << "Failed to acquire camera " << cameraId << std::endl;
-    return 1;
-  }
-
-  acquired_ = true;
-  return 0;
+    try {
+        configure(resolution, libcamera::formats::RGB888, buffercount);
+    } catch (std::exception &ex) {
+        throw std::runtime_error(std::string("Error while configure camera: ") + ex.what());
+    }
 }
 
-std::string Camera::getId(){
-    return cameraId;
+Camera::Camera(int id, std::array<int, 2> resolution, libcamera::PixelFormat format, int buffercount) {
+    try {
+        init(id);
+    } catch (std::exception &ex) {
+        throw std::runtime_error(std::string("Error while initialising camera: ") + ex.what());
+    }
+
+    try {
+        configure(resolution, format, buffercount);
+    } catch (std::exception &ex) {
+        throw std::runtime_error(std::string("Error while configure camera: ") + ex.what());
+    }
 }
 
+Camera::~Camera() {
+    close();
+}
 
-void Camera::configure(int width, int height, libcamera::PixelFormat format, int buffercount) {
+void Camera::init(int id) {
+    camera_manager_ = std::make_unique<libcamera::CameraManager>();
+    int state = camera_manager_->start();
+    if (state) {
+        throw std::runtime_error("Failed to start camera manager: " + std::to_string(state));
+    }
+
+    id_ = camera_manager_->cameras()[id]->id();
+    camera_ = camera_manager_->get(id_);
+
+    if (not camera_) {
+        throw std::runtime_error("Camera id: " + id_ + " not found");
+    }
+
+    if (camera_->acquire()) {
+        throw std::runtime_error("Failed to acquire camera at id: " + id_);
+    }
+
+    acquired_ = true;
+}
+
+void Camera::configure(std::array<int, 2> resolution, libcamera::PixelFormat format, int buffercount) {
   std::cout << "Configuring still capture..." << std::endl;
 
+  libcamera::Size size(resolution.at(0), resolution.at(1));
+
   config_ = camera_->generateConfiguration({libcamera::StreamRole::StillCapture});
-
-  if (width && height) {
-    libcamera::Size size(width, height);
-    config_->at(0).size = size;
-  }
-
+  config_->at(0).size = size;
   config_->at(0).pixelFormat = format;
-
-  if (buffercount) {
-      config_->at(0).bufferCount = buffercount;
-  }
+  config_->at(0).bufferCount = buffercount;
 
   libcamera::CameraConfiguration::Status validation = config_->validate();
-  if (validation == libcamera::CameraConfiguration::Invalid)
-    throw std::runtime_error("Failed to valid stream configurations");
-  else if (validation == libcamera::CameraConfiguration::Adjusted)
-    std::cout << "Stream configuration adjusted" << std::endl;
+  if (validation == libcamera::CameraConfiguration::Invalid) {
+      throw std::runtime_error("Failed to valid stream configurations");
+  } else if (validation == libcamera::CameraConfiguration::Adjusted) {
+      std::cout << "Stream configuration adjusted" << std::endl;
+  }
 
   std::cout << "Still capture setup complete." << std::endl;
 }
@@ -175,7 +210,7 @@ void Camera::requestComplete(libcamera::Request *request) {
 }
 
 void Camera::processRequest(libcamera::Request *request) {
-    requestQueue.push(request);
+    requestQueue_.push(request);
 }
 
 void Camera::returnFrameBuffer(LibcameraOutData frameData) {
@@ -188,8 +223,8 @@ void Camera::returnFrameBuffer(LibcameraOutData frameData) {
 bool Camera::readFrame(LibcameraOutData *frameData){
     std::lock_guard<std::mutex> lock(free_requests_mutex_);
 
-    if (!requestQueue.empty()){
-        libcamera::Request *request = this->requestQueue.front();
+    if (!requestQueue_.empty()){
+        libcamera::Request *request = this->requestQueue_.front();
 
         const libcamera::Request::BufferMap &buffers = request->buffers();
         for (auto it : buffers) {
@@ -205,7 +240,7 @@ bool Camera::readFrame(LibcameraOutData *frameData){
                 frameData->imageData = (uint8_t *)data;
             }
         }
-        this->requestQueue.pop();
+        this->requestQueue_.pop();
         frameData->request = (uint64_t)request;
         return true;
     } else {
@@ -220,9 +255,9 @@ void Camera::set(libcamera::ControlList controls){
     this->controls_ = std::move(controls);
 }
 
-int Camera::reset(int width, int height, libcamera::PixelFormat format, int buffercount) {
+int Camera::reset(std::array<int, 2> resolution, libcamera::PixelFormat format, int buffercount) {
   stop();
-  configure(width, height, format, buffercount);
+  configure(resolution, format, buffercount);
   return start();
 }
 
@@ -238,8 +273,8 @@ void Camera::stop() {
     camera_->requestCompleted.disconnect(this, &Camera::requestComplete);
   }
 
-  while (!requestQueue.empty()) {
-    requestQueue.pop();
+  while (!requestQueue_.empty()) {
+    requestQueue_.pop();
   }
 
   for (auto &iter : mappedBuffers_) {
@@ -261,4 +296,8 @@ void Camera::close() {
   acquired_ = false;
   camera_.reset();
   camera_manager_.reset();
+}
+
+std::string Camera::getId(){
+    return id_;
 }

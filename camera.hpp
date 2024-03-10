@@ -22,6 +22,8 @@
 #include <ctime>
 #include <mutex>
 
+#include "json.h"
+
 #include <libcamera/controls.h>
 #include <libcamera/control_ids.h>
 #include <libcamera/property_ids.h>
@@ -42,13 +44,13 @@ typedef struct {
 
 class Camera {
 public:
-  explicit Camera();
+  Camera(int id=0, std::string path_to_config="camera.json");
+  Camera(int id=0, std::array<int, 2> resolution={1280, 720}, libcamera::PixelFormat format=libcamera::formats::RGB888, int buffercount=libcamera::formats::RGB888);
   ~Camera();
 
-  int init();
-  void configure(int width, int height, libcamera::PixelFormat format, int buffercount);
+
   int start();
-  int reset(int width, int height, libcamera::PixelFormat format, int buffercount);
+  int reset(std::array<int, 2> resolution, libcamera::PixelFormat format, int buffercount);
   void stop();
   void close();
 
@@ -61,6 +63,16 @@ public:
   std::string getId();
 
 private:
+    std::unique_ptr<libcamera::CameraManager> camera_manager_;
+    std::shared_ptr<libcamera::Camera> camera_;
+    std::string id_;
+    bool acquired_{false};
+    bool started_{false};
+
+    void init(int id);
+    void configure(std::array<int, 2> resolution, libcamera::PixelFormat format, int buffercount);
+
+
   int startCapture();
   int queueRequest(libcamera::Request *request);
   void requestComplete(libcamera::Request *request);
@@ -68,18 +80,14 @@ private:
 
   void streamDimensions(libcamera::Stream const *stream, uint32_t *width, uint32_t *heigth, uint32_t *stride) const;
 
-  unsigned int cameraIndex_;
-  uint64_t last_;
-  std::unique_ptr<libcamera::CameraManager> camera_manager_;
-  std::shared_ptr<libcamera::Camera> camera_;
-  bool acquired_{false};
-  bool started_{false};
+
+
   std::unique_ptr<libcamera::CameraConfiguration> config_;
   std::unique_ptr<libcamera::FrameBufferAllocator> allocator_;
   std::vector<std::unique_ptr<libcamera::Request>> requests_;
   std::map<int, std::pair<void *, unsigned int>> mappedBuffers_;
 
-  std::queue<libcamera::Request *> requestQueue;
+  std::queue<libcamera::Request *> requestQueue_;
 
   libcamera::ControlList controls_;
   std::mutex control_mutex_;
@@ -87,7 +95,7 @@ private:
   std::mutex free_requests_mutex_;
 
   libcamera::Stream *viewfinder_stream_ = nullptr;
-  std::string cameraId;
+
 };
 
 
